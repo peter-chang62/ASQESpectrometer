@@ -2,5 +2,18 @@
 __pycache__/
 *.pyc
 *.pyo
-CLAUDE.md
-All software to download/
+
+# Vendor binaries and archives in docs folder
+All software to download/**/*.exe
+All software to download/**/*.dll
+All software to download/**/*.lib
+All software to download/**/*.vi
+All software to download/**/*.rar
+All software to download/**/*.zip
+All software to download/some_examples/
+All software to download/OEM/
+All software to download/EXE program/
+All software to download/Multi-spectrometers-communication/
+All software to download/Example_VBasic_net/
+All software to download/Linux examples/
+All software to download/LabView_Examples/

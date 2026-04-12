@@ -1,0 +1,10 @@
+D:\Dropbox\Airell\HID\HID\VB\original\basic\bin\Debug\basic.exe.config
+D:\Dropbox\Airell\HID\HID\VB\original\basic\bin\Debug\basic.exe
+D:\Dropbox\Airell\HID\HID\VB\original\basic\bin\Debug\basic.pdb
+D:\Dropbox\Airell\HID\HID\VB\original\basic\bin\Debug\basic.xml
+D:\Dropbox\Airell\HID\HID\VB\original\basic\obj\Debug\basic.Form1.resources
+D:\Dropbox\Airell\HID\HID\VB\original\basic\obj\Debug\basic.Resources.resources
+D:\Dropbox\Airell\HID\HID\VB\original\basic\obj\Debug\basic.vbproj.GenerateResource.Cache
+D:\Dropbox\Airell\HID\HID\VB\original\basic\obj\Debug\basic.exe
+D:\Dropbox\Airell\HID\HID\VB\original\basic\obj\Debug\basic.xml
+D:\Dropbox\Airell\HID\HID\VB\original\basic\obj\Debug\basic.pdb

@@ -1,0 +1,187 @@
+﻿------------------------------------------------------------------------------
+int setExposure(const uint32_t exposureTime)
+
+!!can be called in the middle of acquisition, exposure will be applied on the next frame
+
+    exposureTime = multiple of 10 us (microseconds)
+
+    returns
+       This function returns 0 on success and error code in case of error.
+
+------------------------------------------------------------------------------
+int setAcquisitionParameters(const uint16_t numOfScans, const uint16_t numOfBlankScans, const uint8_t scanMode, const uint32_t exposureTime) 
+
+!!current acquisition will be stopped by calling this function
+
+numOfScans - up to 137 full spectra
+
+Sets acquisition parameters
+scanMode: 
+    0 - continuous scanMode
+	
+	CCD is read continuously. On trigger numOfScans frames will be stored in memory, with numOfBlankScans blank frames between them.
+	
+    1 - first frame idle scan mode
+	
+	no activity on CCD before trigger. On trigger numOfScans frames with numOfBlankScans blank frames between them will be read automaticly, then CCD enters idle mode until the next trigger.
+    
+    2 - every frame idle scan mode
+	
+	no activity on CCD before trigger. Every frame, including blank frames will be read only on trigger.
+	
+    3 - frame averaging mode. CCD is read continuously. Every numOfScans frames are averaged, result can be loaded with getFrame(0xFFFF) function. numOfBlankScans in this mode does not make sence and has to be set to 0
+
+	exposureTime = multiple of 10 us (microseconds)
+
+    returns
+        This function returns 0 on success and error code in case of error.
+
+
+------------------------------------------------------------------------------
+int setFrameFormat(const uint16_t numOfStartElement, const uint16_t numOfEndElement, const uint8_t reductionMode, uint16_t *numOfPixelsInFrame)
+
+!!this function clears the memory and stops the current acquisition
+
+numOfStartElement and numOfEndElement mininmum value is 0
+numOfStartElement and numOfEndElement maximum value is 3647
+
+if numOfStartElement == numOfEndElement, frame will contain 32 begin elements + 1 user element + 14 end elements.
+
+reductionMode defines pixel average mode
+	0 - no average
+	1 - average of 2
+	2 - average of 4
+	3 - average of 8
+
+numOfPixelsInFrame returns frame size in pixels. Frame size in bytes = 2 * numOfPixelsInFrame 
+
+
+
+ returns
+        This function returns 0 on success and error code in case of error.
+------------------------------------------------------------------------------
+int getFrameFormat(uint16_t *numOfStartElement, uint16_t *numOfEndElement, uint8_t *reductionMode, uint16_t *numOfPixelsInFrame)
+
+returns the same values as set by setFrameFormat
+
+------------------------------------------------------------------------------
+int getAcquisitionParameters(uint16_t* numOfScans, uint16_t* numOfBlankScans, uint8_t* scanMode, uint32_t* timeOfExposure);
+returns the same values as set by setAcquisitionParameters
+------------------------------------------------------------------------------
+int setExternalTrigger(const uint8_t enableMode, const uint8_t signalFrontMode)
+
+
+enableMode:
+0 - trigger disabled
+1 - trigger enabled
+2 - one time trigger
+
+triggerFront:
+0 - trigger disabled
+1 - front rising
+2 - front falling
+3 - both rising and fall
+
+------------------------------------------------------------------------------
+int triggerAcquisition()
+
+Start acquisition by software
+
+------------------------------------------------------------------------------
+int getStatus(uint8_t *statusFlags, uint16_t *framesInMemory)
+
+statusFlags & 1 - operation in progress
+
+you can read already stored frames while operation in progress if framesInMemory > frame number to read.
+
+statusFlags & 2 - memory is full
+	on this flag acquisition will be stopped and new acquisition can't be started until memory is cleared by clearMemory() or setFrameFormat()
+
+framesInMemory returns current number of frames in memory.
+for frame averaging mode:
+ framesInMemory = 0 - spectra is not ready 
+ framesInMemory = 1 -  spectra is ready for read
+ framesInMemory = 2 -  spectra is ready and at least one spectra is lost because it's not been read.
+------------------------------------------------------------------------------
+int clearMemory()
+
+clears the memory
+
+------------------------------------------------------------------------------
+int getFrame(uint16_t *framePixelsBuffer, const uint16_t numOfFrame)
+
+
+numOfFrame - first frame in memory is number 0, second is 1, etc
+numOfFrame = 0xFFFF - calculate averaged spectra (for averaging mode), for all other modes function will return last captured frame
+------------------------------------------------------------------------------
+int eraseFlash();
+
+erases all user flash memory.
+There is no way to partially erase it.
+------------------------------------------------------------------------------
+int readFlash(uint8_t *buffer, uint32_t offset, const uint16_t bytesToRead)
+
+
+read bytesToRead from the user flash memory starting at offset and copies them to the buffer
+offset can be any value from 0 to 1FFFF*
+*you can read only 1 byte from 1FFFF, 2 bytes from 1FFFE etc.
+------------------------------------------------------------------------------
+int writeFlash(uint8_t *buffer, uint32_t offset, const uint32_t bytesToWrite);
+
+writes bytesToWrite from the buffer to the user flash memory starting at offset
+offset can be any value from 0 to 1FFFF*
+*you can write only 1 byte to 1FFFF, 2 bytes to 1FFFE etc.
+
+you can write only to empty memory locations that have values = 0xff. 
+Only way to get them back to empty is erasing all user memory by eraseFlash(). There is no way to partially erase it.
+128kb available
+------------------------------------------------------------------------------
+int resetDevice();
+resets device parameters to default and clears the memory
+default parameters is
+numOfStartElement = 0
+numOfEndElement = 3647
+reductionMode = 0
+numOfScans = 1
+numOfBlankScans = 0
+scanMode = 0
+exposureTime = 10
+------------------------------------------------------------------------------
+int detachDevice()
+device is disconnected from usb, and you can't interact with it by usb until device reset
+------------------------------------------------------------------------------
+int setAllParameters(uint16_t numOfScans, uint16_t numOfBlankScans, uint8_t scanMode, uint32_t timeOfExposure, uint8_t enableMode, uint8_t signalFrontMode);
+Clears memory and sets parameters like in functions setAcquisitionParameters and setExternalTrigger. If enableMode or signalFrontMode = 0 (external trigger disabled) this function is also triggers the acquisition
+------------------------------------------------------------------------------
+int setOpticalTrigger(const uint8_t enableMode, const uint16_t pixel, const uint16_t threshold);
+sets optical acquisition trigger
+only applicable in scanMode = 0
+enableMode = 0 trigger disabled
+enableMode = 1 trigger for falling edge
+enableMode = 2 trigger on threshold
+enableMode = 0x81 one time trigget for rising edge
+enableMode = 0x82 one time trigger for falling edge
+
+pixel - pixel number (for 0 to 3639 range) for with exiding level should be detected (for optical trigger only). Does not depend on frame format.
+------------------------------------------------------------------------------
+
+///////////////////////////////////
+int connectToDeviceByIndex(unsigned int index);
+
+connect device with index.If only one device is connected use 0 as an index.
+
+int getDeviceCount();
+
+returns number of connected devices
+
+struct DeviceInfo_t * getDevicesInfo();
+
+returns serial numbers list of all connected devices. Run clearDevicesInfo() with the same descriptor obtained from getDevicesInfo()
+structure information:
+struct DeviceInfo_t {
+
+      char* R
+ //descriptor to the string with serial number
+      struct DeviceInfo_t *next;
+//descriptor to the next element of the list or null if last element
+//////////////////////////////////

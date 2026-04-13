@@ -1,3 +1,4 @@
+hid>=0.14.0
 appnope==0.1.4
 asttokens==3.0.0
 comm==0.2.2

@@ -1,31 +1,18 @@
 import os
-import ctypes
 import sys
+import struct
+import math
+import hid
 import numpy as np
 from time import sleep
-import platform
+
 
 class ASQESpectrometer:
     def __init__(self):
-        # Determine OS and load appropriate library
-        if sys.platform == 'win32':
-            # Get architecture
-            arch, _ = platform.architecture()
-            if arch == '64bit':
-                lib_name = 'libspectr64bit.dll'
-            else:
-                lib_name = 'libspectr.dll'
-        elif sys.platform == 'darwin':
-            lib_name = 'libspectr.dylib'
-        else:
-            lib_name = 'libspectr.so'
-        lib_path = os.path.join(os.path.dirname(__file__), 'lib', lib_name)
-        self.lib = ctypes.CDLL(lib_path)
-
         # Initialize device parameters
         self.num_of_scans = 1
         self.num_of_blank_scans = 0
-        self.exposure_time = 1000  # in microseconds (10 ms)
+        self.exposure_time = 1000  # units: 10 µs (= 10 ms)
         self.scan_mode = 3
         self.num_of_start_element = 0
         self.num_of_end_element = 3647
@@ -38,69 +25,134 @@ class ASQESpectrometer:
         self.norm_coef = None
         self.power_coef = None
 
-        # Setup function prototypes
-        self._setup_function_prototypes()
+        # HID device handle and frame pixel count (set by configure_acquisition)
+        self._dev = hid.device()
+        self._num_pixels_in_frame = 0
 
         # Connect to device
         self.connect()
 
-    def _setup_function_prototypes(self):
-        self.lib.connectToDevice.argtypes = [ctypes.c_char_p]
-        self.lib.connectToDevice.restype = ctypes.c_int
-
-        self.lib.disconnectDevice.argtypes = []
-        self.lib.disconnectDevice.restype = None
-
-        self.lib.setAcquisitionParameters.argtypes = [
-            ctypes.c_uint16, ctypes.c_uint16,
-            ctypes.c_uint8, ctypes.c_uint32
-        ]
-        self.lib.setAcquisitionParameters.restype = ctypes.c_int
-
-        self.lib.setFrameFormat.argtypes = [
-            ctypes.c_uint16, ctypes.c_uint16,
-            ctypes.c_uint8, ctypes.POINTER(ctypes.c_uint16)
-        ]
-        self.lib.setFrameFormat.restype = ctypes.c_int
-
-        self.lib.getStatus.argtypes = [
-            ctypes.POINTER(ctypes.c_uint8),
-            ctypes.POINTER(ctypes.c_uint16)
-        ]
-        self.lib.getStatus.restype = ctypes.c_int
-
-        self.lib.getFrame.argtypes = [
-            ctypes.POINTER(ctypes.c_uint16),
-            ctypes.c_uint16
-        ]
-        self.lib.getFrame.restype = ctypes.c_int
-
-        self.lib.triggerAcquisition.argtypes = []
-        self.lib.triggerAcquisition.restype = ctypes.c_int
-
-        self.lib.readFlash.argtypes = [
-            ctypes.POINTER(ctypes.c_uint8),
-            ctypes.c_uint32,
-            ctypes.c_uint32
-        ]
-        self.lib.readFlash.restype = ctypes.c_int
-
     def connect(self):
-        result = self.lib.connectToDevice(None)
-        if result != 0:
-            raise ConnectionError(f"Failed to connect to device. Error code: {result}")
+        self._dev.open(0x20E2, 0x0001)
+        self._dev.set_nonblocking(False)
+
+    # ── Transport helpers ──────────────────────────────────────────────────────
+
+    def _normalize_response(self, raw):
+        """Normalize platform-specific read length to 64 bytes starting with the reply opcode.
+
+        Windows/macOS: driver strips the report-ID byte → 64 bytes returned.
+        Linux (hidraw): report-ID byte is kept → 65 bytes returned, byte 0 is 0x00.
+        Valid reply opcodes are 0x81–0x9C, never 0x00, so the check is unambiguous.
+        """
+        if len(raw) == 65 and raw[0] == 0x00:
+            return raw[1:]   # Linux: strip report ID
+        if len(raw) == 64:
+            return raw        # Windows/macOS: already stripped
+        raise RuntimeError(f"Unexpected HID read length {len(raw)}")
+
+    def _write(self, opcode, payload=None):
+        pkt = [0x00, opcode] + (payload or [])
+        pkt += [0x00] * (65 - len(pkt))   # zero-pad to exactly 65 bytes
+        written = self._dev.write(pkt)
+        if written < 0:
+            raise RuntimeError("HID write failed (error 504)")
+
+    def _read(self, timeout_ms=100):
+        raw = self._dev.read(65, timeout_ms)
+        if not raw:
+            raise RuntimeError(f"HID read timeout after {timeout_ms} ms (error 505)")
+        return self._normalize_response(raw)
+
+    def _write_read(self, opcode, payload, expected_reply, timeout_ms=100):
+        self._write(opcode, payload)
+        data = self._read(timeout_ms)
+        if data[0] != expected_reply:
+            raise RuntimeError(
+                f"Wrong reply opcode: expected 0x{expected_reply:02X}, "
+                f"got 0x{data[0]:02X} (error 506)"
+            )
+        return data
+
+    # ── Frame helpers ──────────────────────────────────────────────────────────
+
+    def _get_frame_format(self):
+        """Query the device for current pixel count and cache it."""
+        data = self._write_read(0x08, None, 0x88)
+        self._num_pixels_in_frame = struct.unpack_from('<H', bytes(data), 6)[0]
+
+    def _get_frame(self, num_frame):
+        """Retrieve one captured frame from device RAM.
+
+        Returns a 3694-element numpy uint16 array (fixed size so that
+        subtract_background()'s hardcoded indices [15:31], [32:3685], [3686:3692]
+        remain valid; elements beyond _num_pixels_in_frame are zero-padded).
+        """
+        num_pixels = self._num_pixels_in_frame
+        packets_needed = math.ceil(num_pixels / 30)
+        if packets_needed > 124:
+            raise RuntimeError(f"Frame exceeds 124-packet maximum (error 508)")
+
+        frame_payload = [0x00, 0x00]                         # pixelOffset = 0
+        frame_payload += list(struct.pack('<H', num_frame))  # frame index
+        frame_payload += [packets_needed]
+        self._write(0x0A, frame_payload)
+
+        buf = np.zeros(3694, dtype=np.uint16)
+        for n in range(1, packets_needed + 1):
+            data = self._read(timeout_ms=100)
+            if data[0] != 0x8A:
+                raise RuntimeError(
+                    f"getFrame: wrong reply 0x{data[0]:02X} (error 506)"
+                )
+            remaining = data[3]
+            expected = packets_needed - n
+            if remaining >= 250 or remaining != expected:
+                raise RuntimeError("getFrame: packet count mismatch (error 507)")
+            pixel_offset = struct.unpack_from('<H', bytes(data), 1)[0]
+            for i in range(30):
+                idx = pixel_offset + i
+                if idx >= num_pixels:
+                    break
+                buf[idx] = struct.unpack_from('<H', bytes(data), 4 + i * 2)[0]
+        return buf
+
+    # ── Flash I/O ──────────────────────────────────────────────────────────────
 
     def read_flash(self, offset=0, size=1000):
-        """
-        Read bytes from the flash memory starting at the given offset.
-        """
-        READ_FLASH_OK = 0
-        buffer = (ctypes.c_uint8 * size)()
-        result = self.lib.readFlash(buffer, offset, size)
-        if result != READ_FLASH_OK:
-            raise RuntimeError(f"readFlesh failed with code {result}")
-        return bytes(buffer)
-    
+        """Read bytes from flash memory starting at the given offset."""
+        payload_size = 60   # FLASH_READ_PAYLOAD = PACKET_SIZE - 4
+        total_packets = math.ceil(size / payload_size)
+        buf = bytearray(size)
+        burst_base = 0
+
+        while total_packets > 0:
+            burst_count = min(total_packets, 100)   # MAX_READ_FLASH_PACKETS = 100
+            burst_payload = list(struct.pack('<I', offset + burst_base)) + [burst_count]
+            self._write(0x1A, burst_payload)
+
+            for burst_n in range(1, burst_count + 1):
+                data = self._read(timeout_ms=100)
+                if data[0] != 0x9A:
+                    raise RuntimeError(
+                        f"readFlash: wrong reply 0x{data[0]:02X} (error 505)"
+                    )
+                remaining = data[3]
+                expected = burst_count - burst_n
+                if remaining >= 250 or remaining != expected:
+                    raise RuntimeError("readFlash: packet count mismatch (error 510)")
+                local_offset = struct.unpack_from('<H', bytes(data), 1)[0]
+                for i in range(payload_size):
+                    buf_idx = burst_base + local_offset + i
+                    if buf_idx >= size:
+                        break
+                    buf[buf_idx] = data[4 + i]
+
+            total_packets -= burst_count
+            burst_base += burst_count * payload_size
+
+        return bytes(buf)
+
     def read_calibration_file(self):
         offset = 0
         CHUNK_SIZE = 1000
@@ -117,33 +169,31 @@ class ASQESpectrometer:
                 full_data.extend(data)
             offset += CHUNK_SIZE
         return full_data
-    
+
     def load_calibration_data(self):
         """Return calibration data, reading from flash only once."""
-        # Return cached data if available
         if self._calibration_data_loaded:
             return
-        
-        # Read and parse flash data if not cached
+
         calib = self.read_calibration_file()
         decode_data = calib.decode("utf-8")
         lines = decode_data.splitlines()
 
-        # Parse bck_aT from second line
         try:
             self.bck_aT = float(lines[1])
         except (ValueError, IndexError) as e:
             raise ValueError("Failed to parse bck_aT from calibration data") from e
 
-        # Parse calibration arrays and convert to float
         self.wavelength = np.array(lines[12:3665], dtype=float)
         self.norm_coef = np.array(lines[3666:7319], dtype=float)
         self.power_coef = np.array(lines[7320:10973], dtype=float)
         self._calibration_data_loaded = True
-    
+
+    # ── Parameter control ──────────────────────────────────────────────────────
+
     def set_parameters(self, num_of_scans=None, num_of_blank_scans=None, exposure_time=None,
-                   scan_mode=None, num_of_start_element=None, num_of_end_element=None,
-                   reduction_mode=None):
+                       scan_mode=None, num_of_start_element=None, num_of_end_element=None,
+                       reduction_mode=None):
         if num_of_scans is not None:
             self.num_of_scans = num_of_scans
         if num_of_blank_scans is not None:
@@ -160,39 +210,44 @@ class ASQESpectrometer:
             self.reduction_mode = reduction_mode
 
     def configure_acquisition(self):
-        self.lib.setAcquisitionParameters(
-            ctypes.c_uint16(self.num_of_scans),
-            ctypes.c_uint16(self.num_of_blank_scans),
-            ctypes.c_uint8(self.scan_mode),
-            ctypes.c_uint32(self.exposure_time)
-        )
+        payload = list(struct.pack('<H', self.num_of_scans))
+        payload += list(struct.pack('<H', self.num_of_blank_scans))
+        payload += [self.scan_mode]
+        payload += list(struct.pack('<I', self.exposure_time))
+        data = self._write_read(0x03, payload, 0x83)
+        if data[1] != 0:
+            raise RuntimeError(f"setAcquisitionParameters error code {data[1]}")
 
-        num_pixels = ctypes.c_uint16(0)
-        self.lib.setFrameFormat(
-            ctypes.c_uint16(self.num_of_start_element),
-            ctypes.c_uint16(self.num_of_end_element),
-            ctypes.c_uint8(self.reduction_mode),
-            ctypes.byref(num_pixels)
-        )
+        payload = list(struct.pack('<H', self.num_of_start_element))
+        payload += list(struct.pack('<H', self.num_of_end_element))
+        payload += [self.reduction_mode]
+        data = self._write_read(0x04, payload, 0x84)
+        if data[1] != 0:
+            raise RuntimeError(f"setFrameFormat error code {data[1]}")
+        self._num_pixels_in_frame = struct.unpack_from('<H', bytes(data), 2)[0]
+
+    # ── Acquisition ────────────────────────────────────────────────────────────
 
     def capture_frame(self):
-        self.lib.triggerAcquisition()
+        self._write(0x06)   # triggerAcquisition — write-only, no reply
 
-        status = ctypes.c_uint8(0)
-        frames = ctypes.c_uint16(0)
-        while frames.value == 0:
+        while True:
             sleep(0.025)
-            self.lib.getStatus(ctypes.byref(status), ctypes.byref(frames))
+            data = self._write_read(0x01, None, 0x81)
+            frames_in_memory = struct.unpack_from('<H', bytes(data), 2)[0]
+            if frames_in_memory > 0:
+                break
 
-        buffer_size = 3694
-        buffer = (ctypes.c_uint16 * buffer_size)()
-        self.lib.getFrame(buffer, 65535)
+        if self._num_pixels_in_frame == 0:
+            self._get_frame_format()   # lazy init if configure_acquisition() was skipped
 
-        return buffer
+        return self._get_frame(0xFFFF)
 
     def get_spectrum(self):
         return self.capture_frame()
-    
+
+    # ── Signal processing ──────────────────────────────────────────────────────
+
     def subtract_background(self):
         """
         1. get_spectrum()
@@ -206,15 +261,15 @@ class ASQESpectrometer:
         # Subtract background and slice
         corrected = data[32:3685] - background
         return corrected
-    
+
     def normalize_spectrum(self):
         """
         1. subtract_background()
-        2. Apply narmalization to spectrum: Normalization: spectrum[i] /= norm_coef[i]
+        2. Apply normalization to spectrum: Normalization: spectrum[i] /= norm_coef[i]
         """
         if not self._calibration_data_loaded:
             self.load_calibration_data()
-        
+
         data = self.subtract_background()
         # Convert to float for precision during calculations
         data = data.astype(np.float64)
@@ -222,7 +277,7 @@ class ASQESpectrometer:
         # Apply normalization coefficients
         data /= self.norm_coef
         return self.wavelength, data
-    
+
     def get_calibrated_spectrum(self):
         """
         Apply full calibration to spectrum:
@@ -234,4 +289,7 @@ class ASQESpectrometer:
         return wavelength, data
 
     def __del__(self):
-        self.lib.disconnectDevice()
+        try:
+            self._dev.close()
+        except Exception:
+            pass

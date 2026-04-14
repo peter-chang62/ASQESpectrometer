@@ -2,143 +2,63 @@ Python 3.8.19 (default, Mar 20 2024, 19:55:45) [MSC v.1916 64 bit (AMD64)]
 Type 'copyright', 'credits' or 'license' for more information                          
 IPython 8.12.2 -- An enhanced Interactive Python. Type '?' for help.                   
                                                                                        
-=== Pre-flight Checks ===                                                              
+=== Pre-flight ===                                                                     
   [PASS] hid module is importable                                                      
-  [PASS] ASQE Spectrometer visible on USB (VID=0x20E2, PID=0x0001)                     
-         path: \\?\HID#VID_20E2&PID_0001#7&3a424fe4&4&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}                                                                             
-         usage_page: 0xFF00                                                            
+  [PASS] Device visible on USB (VID=0x20E2, PID=0x0001)                                
                                                                                        
-=== Phase 0: Raw HID Diagnostic ===                                                    
-  hid.write() returned 9 (expected 65)                                                 
-  hid.read(65, 200) returned 64 bytes                                                  
-  raw[:8] = ['0xd', '0x1', '0x0', '0x0', '0x0', '0x1', '0x0', '0x1']                   
-  → 64-byte read, report ID stripped; effective opcode = 0x0D                          
-  [FAIL] Raw getStatus reply opcode is 0x81 (device idle, protocol OK)  (got 0x0D — device left in bad state; Phase 1 reset should fix this)                                  
+=== Phase 0: Full HID Enumeration (1 interface(s)) ===                                 
+  Multiple interfaces would mean hid.open(vid,pid) may pick the wrong one.             
                                                                                        
-=== Phase 1: Connection + Device Reset ===                                             
-  [PASS] ASQESpectrometer() creates without exception                                  
-  [PASS] _dev is not None                                                              
-  [PASS] _num_pixels_in_frame is 0 before configure_acquisition                        
-  Sending resetDevice (0xF1)...                                                        
-  [PASS] reset_device() raises no exception                                            
-  Waiting 1.5 s for device to re-initialize...                                         
-  [FAIL] get_status() after reset raises no exception  (Wrong reply opcode: expected 0x81, got 0x0D (error 506))                                                              
-Traceback (most recent call last):                                                     
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\test_spectrometer_v2.py", line 155, in <module>                                                                           
-    acq_active, mem_full, frames = spec.get_status()
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\libspec.py", line 57, in get_status    data = self._write_read(0x01, None, 0x81)
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\libspec.py", line 106, in _write_read
-    raise RuntimeError(
-RuntimeError: Wrong reply opcode: expected 0x81, got 0x0D (error 506)
+  Interface [0]:                                                                       
+    path: \\?\HID#VID_20E2&PID_0001#7&3a424fe4&4&0000#{4d1e55b2-f16f-11cf-88cb-00111100...                                                                                    
+    vendor_id: 8418                                                                    
+    product_id: 1                                                                      
+    serial_number: 1.0.0                                                               
+    release_number: 256                                                                
+    manufacturer_string: ASEQ"                                                         
+    product_string: mini-Spectrometers solution                                        
+    usage_page: 65280                                                                  
+    usage: 1                                                                           
+    interface_number: 0                                                                
+    bus_type: 1                                                                        
+                                                                                       
+=== Phase 1: Write Size Probe ===                                                      
+  Sending different write sizes; each should return the number of bytes sent.          
+    write( 9 bytes) → returned 9  [OK]                                                 
+  (flushed 1 stale packet(s))                                                          
+    write(65 bytes) → returned 9  [TRUNCATED — only 9 of 65 bytes sent]                
+  (flushed 1 stale packet(s))                                                          
+  [PASS] hid.device has send_feature_report()
 
-=== Phase 2: configure_acquisition ===
-  [FAIL] configure_acquisition()  (Wrong reply opcode: expected 0x83, got 0x0D (error 506))
-Traceback (most recent call last):
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\test_spectrometer_v2.py", line 183, in <module>
-    spec.configure_acquisition()
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\libspec.py", line 252, in configure_acquisition
-    data = self._write_read(0x03, payload, 0x83)
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\libspec.py", line 106, in _write_read
-    raise RuntimeError(
-RuntimeError: Wrong reply opcode: expected 0x83, got 0x0D (error 506)
-  [FAIL] reduction_mode=1 binning test  (Wrong reply opcode: expected 0x83, got 0x0D (error 506))
-Traceback (most recent call last):
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\test_spectrometer_v2.py", line 197, in <module>
-    spec.configure_acquisition()
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\libspec.py", line 252, in configure_acquisition
-    data = self._write_read(0x03, payload, 0x83)
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\libspec.py", line 106, in _write_read
-    raise RuntimeError(
-RuntimeError: Wrong reply opcode: expected 0x83, got 0x0D (error 506)
+=== Phase 2: Feature Report Probe ===
+  send_feature_report(65 bytes) → returned -1
+  [FAIL] send_feature_report returned 65  (got -1)
+  read after feature report: TIMEOUT — no response from device
+  [FAIL] feature report getStatus replies 0x81  (read timeout)
 
-=== Phase 3: capture_frame ===
-  [FAIL] capture_frame()  (Wrong reply opcode: expected 0x81, got 0x0D (error 506))
-Traceback (most recent call last):
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\test_spectrometer_v2.py", line 224, in <module>
-    buf = spec.capture_frame()
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\libspec.py", line 271, in capture_frame
-    data = self._write_read(0x01, None, 0x81)
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\libspec.py", line 106, in _write_read
-    raise RuntimeError(
-RuntimeError: Wrong reply opcode: expected 0x81, got 0x0D (error 506)
+=== Phase 3: Multi-Interface Path Probe ===
 
-=== Phase 4: subtract_background / normalize_spectrum ===
-  [FAIL] subtract_background()  (Wrong reply opcode: expected 0x81, got 0x0D (error 506))
-Traceback (most recent call last):
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\test_spectrometer_v2.py", line 243, in <module>
-    corrected = spec.subtract_background()
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\libspec.py", line 291, in subtract_background
-    data = self.capture_frame()
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\libspec.py", line 271, in capture_frame
-    data = self._write_read(0x01, None, 0x81)
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\libspec.py", line 106, in _write_read
-    raise RuntimeError(
-RuntimeError: Wrong reply opcode: expected 0x81, got 0x0D (error 506)
-  [FAIL] normalize_spectrum()  (readFlash: wrong reply 0x0D (error 505))
-Traceback (most recent call last):
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\test_spectrometer_v2.py", line 261, in <module>
-    wl, intensity = spec.normalize_spectrum()
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\libspec.py", line 306, in normalize_spectrum
-    self.load_calibration_data()
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\libspec.py", line 213, in load_calibration_data
-    calib = self.read_calibration_file()
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\libspec.py", line 198, in read_calibration_file
-    data = self.read_flash(offset, CHUNK_SIZE)
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\libspec.py", line 172, in read_flash
-    raise RuntimeError(
-RuntimeError: readFlash: wrong reply 0x0D (error 505)
+  Path [0]: \\?\HID#VID_20E2&PID_0001#7&3a424fe4&4&0000#{4d1e55b2-f16f-1...
+    write(65 bytes) → 9
+    read: 64 bytes, opcode 0x0D
+  [FAIL] path[0] write() getStatus → 0x81  (got 0x0D)
 
-=== Phase 5: get_calibrated_spectrum ===
-  [FAIL] get_calibrated_spectrum()  (HID read timeout after 100 ms (error 505))
-Traceback (most recent call last):
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\test_spectrometer_v2.py", line 273, in <module>
-    wl, power = spec.get_calibrated_spectrum()
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\libspec.py", line 322, in get_calibrated_spectrum
-    wavelength, data = self.normalize_spectrum()
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\libspec.py", line 306, in normalize_spectrum
-    self.load_calibration_data()
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\libspec.py", line 213, in load_calibration_data
-    calib = self.read_calibration_file()
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\libspec.py", line 198, in read_calibration_file
-    data = self.read_flash(offset, CHUNK_SIZE)
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\libspec.py", line 170, in read_flash
-    data = self._read(timeout_ms=100)
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\libspec.py", line 99, in _read         raise RuntimeError(f"HID read timeout after {timeout_ms} ms (error 505)")
-RuntimeError: HID read timeout after 100 ms (error 505)
+=== Transport Resolution ===
+  No working write method found in Phases 2–3.
+  → Try: unplug/replug USB, close all HID clients, re-run this test.
 
-=== Phase 6: Flash read ===
-  [FAIL] read_flash(size=100)  (HID read timeout after 100 ms (error 505))
-Traceback (most recent call last):
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\test_spectrometer_v2.py", line 295, in <module>
-    chunk = spec.read_flash(offset=0, size=100)
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\libspec.py", line 170, in read_flash
-    data = self._read(timeout_ms=100)
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\libspec.py", line 99, in _read         raise RuntimeError(f"HID read timeout after {timeout_ms} ms (error 505)")
-RuntimeError: HID read timeout after 100 ms (error 505)
-  (reading full calibration file — may take ~30 s) ...
-  [FAIL] read_calibration_file()  (HID read timeout after 100 ms (error 505))
-Traceback (most recent call last):
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\test_spectrometer_v2.py", line 304, in <module>
-    calib_raw = spec.read_calibration_file()
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\libspec.py", line 198, in read_calibration_file
-    data = self.read_flash(offset, CHUNK_SIZE)
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\libspec.py", line 170, in read_flash
-    data = self._read(timeout_ms=100)
-  File "C:\Users\chi3optics\Github\ASQESpectrometer\libspec.py", line 99, in _read         raise RuntimeError(f"HID read timeout after {timeout_ms} ms (error 505)")
-RuntimeError: HID read timeout after 100 ms (error 505)
+=== Phase 4: Full Command Sequence ===
+  Skipped — no working transport.
 
 =======================================================
-  Results: 6/16 passed,  10 failed
-  Failed tests:
-    - Raw getStatus reply opcode is 0x81 (device idle, protocol OK)
-    - get_status() after reset raises no exception
-    - configure_acquisition()
-    - reduction_mode=1 binning test
-    - capture_frame()
-    - subtract_background()
-    - normalize_spectrum()
-    - get_calibrated_spectrum()
-    - read_flash(size=100)
-    - read_calibration_file()
+  Results: 3/6 passed,  3 failed
+
+  Transport diagnosis:
+    feature_report_works = False
+    working_path         = None
+    write_method         = None
+
+  No working write method found.
+  → Unplug/replug USB, close ALL HID clients (LabView, etc.), re-run.
 =======================================================
 

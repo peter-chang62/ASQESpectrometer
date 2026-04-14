@@ -6,49 +6,49 @@ IPython 8.12.2 -- An enhanced Interactive Python. Type '?' for help.
   [PASS] hid importable                                                               
   [PASS] device visible (VID=0x20E2 PID=0x0001)                                       
                                                                                       
-=== Phase 0: getStatus sanity check ===                                               
+=== Phase 0: getStatus baseline ===                                                   
   [PASS] getStatus cmd echo = 0x01                                                    
   statusFlags=0x00  framesInMemory=0                                                  
+    01 00 00 00 01 00 00 0D 01 02 03 04 05 06 07 08   ................                
                                                                                       
-=== Phase 1: setAcquisitionParameters byte-layout probe ===                           
-  All variants: numOfScans=1, numOfBlankScans=0, exposureTime=1000                    
+=== Phase 1: setAcquisitionParameters ===                                             
+  numOfScans=1, numOfBlankScans=0, scanMode=3, exposureTime=5000 (50 ms)              
+  Layout: [numOfScans:u16, numOfBlankScans:u16, scanMode:u8, exposureTime:u32]        
+  packet bytes: ['0x03', '0x01', '0x00', '0x00', '0x00', '0x03', '0x88', '0x13', '0x00', '0x00']                                                                            
+  raw response bytes [0:8]: ['0x03', '0x0D', '0x01', '0x02', '0x03', '0x04', '0x05', '0x06']                                                                                
+    03 0D 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E   ................                
+  [PASS] setAcquisitionParameters cmd echo = 0x03                                     
+  byte[1] = 0x0D (13)  ← non-zero (treating as non-fatal, proceeding)                 
                                                                                       
-  Variant A: uint16 counts, scan_mode=0                                               
-  packet data bytes: ['0x03', '0x01', '0x00', '0x00', '0x00', '0x00', '0xE8', '0x03'] 
-  response bytes [0:8]: ['0x03', '0x0D', '0x01', '0x02', '0x03', '0x04', '0x05', '0x06']                                                                                    
-    0000  03 0D 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E   ................          
-  [PASS] variant A: cmd echo = 0x03                                                   
-  [FAIL] variant A: error_code = 0 (success)  (error code 13)                         
-                                                                                      
-  Variant B: uint16 counts, scan_mode=3  ← current libspec.py layout                  
-  packet data bytes: ['0x03', '0x01', '0x00', '0x00', '0x00', '0x03', '0xE8', '0x03'] 
-  response bytes [0:8]: ['0x03', '0x0D', '0x01', '0x02', '0x03', '0x04', '0x05', '0x06']                                                                                    
-    0000  03 0D 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E   ................          
-  [PASS] variant B: cmd echo = 0x03                                                   
-  [FAIL] variant B: error_code = 0 (success)  (error code 13)                         
-                                                                                      
-  Variant C: uint8  counts, scan_mode=0
-  packet data bytes: ['0x03', '0x01', '0x00', '0x00', '0xE8', '0x03', '0x00', '0x00']
-  response bytes [0:8]: ['0x03', '0x0D', '0x01', '0x02', '0x03', '0x04', '0x05', '0x06']
-    0000  03 0D 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E   ................
-  [PASS] variant C: cmd echo = 0x03
-  [FAIL] variant C: error_code = 0 (success)  (error code 13)
-
-  Variant D: uint8  counts, scan_mode=3
-  packet data bytes: ['0x03', '0x01', '0x00', '0x03', '0xE8', '0x03', '0x00', '0x00']
-  response bytes [0:8]: ['0x03', '0x0D', '0x01', '0x02', '0x03', '0x04', '0x05', '0x06']
-    0000  03 0D 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E   ................
-  [PASS] variant D: cmd echo = 0x03
-  [FAIL] variant D: error_code = 0 (success)  (error code 13)
-
-=== Phase 2: setFrameFormat ===
-  skipped — no working setAcquisitionParameters variant found
+=== Phase 2: setFrameFormat ===                                                       
+  packet bytes: ['0x04', '0x00', '0x00', '0x3F', '0x0E', '0x00']                      
+  raw response bytes [0:8]: ['0x00', '0x00', '0xA8', '0x58', '0xA0', '0x50', '0x8A', '0x50']                                                                                
+    00 00 A8 58 A0 50 8A 50 2B 80 9C 24 E0 02 08 40   ...X.P.P+..$...@                
+  [FAIL] setFrameFormat cmd echo = 0x04  (got 0x00)                                   
+  byte[1] = 0x00 (0)  ← 0 = success                                                   
+  bytes[2:4] interpreted as numPixelsInFrame = 22696
 
 === Phase 3: triggerAcquisition + poll ===
-  skipped — Phases 1/2 did not fully pass
+  sending triggerAcquisition (0x06) — no reply expected
+  poll   1 (  25 ms): statusFlags=0x00  framesInMemory=0  acq_active=False
+  poll  21 ( 525 ms): statusFlags=0x00  framesInMemory=0  acq_active=False
+  poll  41 (1025 ms): statusFlags=0x00  framesInMemory=0  acq_active=False
+  poll  61 (1525 ms): statusFlags=0x00  framesInMemory=0  acq_active=False
+  poll  81 (2025 ms): statusFlags=0x00  framesInMemory=0  acq_active=False
+  poll 101 (2525 ms): statusFlags=0x00  framesInMemory=0  acq_active=False
+  poll 121 (3025 ms): statusFlags=0x00  framesInMemory=0  acq_active=False
+  poll 141 (3525 ms): statusFlags=0x00  framesInMemory=0  acq_active=False
+  poll 161 (4025 ms): statusFlags=0x00  framesInMemory=0  acq_active=False
+  poll 181 (4525 ms): statusFlags=0x00  framesInMemory=0  acq_active=False
+  framesInMemory never > 0 after 5 s  (last statusFlags=0x00)
+  [FAIL] frame ready within 5 s
 
 ============================================================
-  Results: 7/13 passed,  6 failed
+  Results: 4/6 passed,  2 failed
 
-  No working layout found — inspect hex dumps above.
+  setAcquisitionParameters byte[1] = 0x0D (13)
+  setFrameFormat          byte[1] = 0x00 (0)
+
+  No frame captured — commands may be genuinely rejected.
+  Inspect the byte[1] values and raw response bytes above.
 ============================================================

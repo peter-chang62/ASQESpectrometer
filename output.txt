@@ -1,54 +1,54 @@
-Python 3.8.19 (default, Mar 20 2024, 19:55:45) [MSC v.1916 64 bit (AMD64)]                                                        
-Type 'copyright', 'credits' or 'license' for more information    
-IPython 8.12.2 -- An enhanced Interactive Python. Type '?' for help.                                                              
-                                                                 
-=== Pre-flight ===                                               
-  [PASS] hid module is importable                                
-  [PASS] Device visible on USB (VID=0x20E2, PID=0x0001)          
-                                                                 
-=== Phase 0: HID Enumeration (1 interface(s)) ===                
-                                                                 
-  Interface [0]:                                                 
-    path: \\?\HID#VID_20E2&PID_0001#7&3a424fe4&4&0000#{4d1e55b2-f16f-11cf-88cb-00111100...                                        
-    vendor_id: 8418                                              
-    product_id: 1                                                
-    serial_number: 1.0.0                                         
-    release_number: 256                                          
-    manufacturer_string: ASEQ"                                   
-    product_string: mini-Spectrometers solution                  
-    usage_page: 65280                                            
-    usage: 1                                                     
-    interface_number: 0                                          
-    bus_type: 1                                                  
-                                                                 
-=== Phase 1: 9-byte getStatus (isolation test) ===               
-  Hypothesis: 8-byte output reports ARE the correct transport.   
-  Packet: [0x00, 0x01, 0x00×7]  →  expect opcode 0x81 in reply.  
-  write9(getStatus) → returned 9  (expect 9)                     
-  read: 64 bytes, opcode=0x0D                                    
-  response bytes [0:8]: ['0xd', '0x1', '0x0', '0x0', '0x0', '0x1', '0x0', '0x0']
-  [FAIL] 9-byte getStatus → opcode 0x81  (got 0x0D)
+Python 3.8.19 (default, Mar 20 2024, 19:55:45) [MSC v.1916 64 bit (AMD64)]            
+Type 'copyright', 'credits' or 'license' for more information                         
+IPython 8.12.2 -- An enhanced Interactive Python. Type '?' for help.                  
+                                                                                      
+=== Pre-flight ===                                                                    
+  [PASS] hid importable                                                               
+  [PASS] device visible (VID=0x20E2 PID=0x0001)                                       
+                                                                                      
+=== Phase 0: getStatus sanity check ===                                               
+  [PASS] getStatus cmd echo = 0x01                                                    
+  statusFlags=0x00  framesInMemory=0                                                  
+                                                                                      
+=== Phase 1: setAcquisitionParameters byte-layout probe ===                           
+  All variants: numOfScans=1, numOfBlankScans=0, exposureTime=1000                    
+                                                                                      
+  Variant A: uint16 counts, scan_mode=0                                               
+  packet data bytes: ['0x03', '0x01', '0x00', '0x00', '0x00', '0x00', '0xE8', '0x03'] 
+  response bytes [0:8]: ['0x03', '0x0D', '0x01', '0x02', '0x03', '0x04', '0x05', '0x06']                                                                                    
+    0000  03 0D 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E   ................          
+  [PASS] variant A: cmd echo = 0x03                                                   
+  [FAIL] variant A: error_code = 0 (success)  (error code 13)                         
+                                                                                      
+  Variant B: uint16 counts, scan_mode=3  ← current libspec.py layout                  
+  packet data bytes: ['0x03', '0x01', '0x00', '0x00', '0x00', '0x03', '0xE8', '0x03'] 
+  response bytes [0:8]: ['0x03', '0x0D', '0x01', '0x02', '0x03', '0x04', '0x05', '0x06']                                                                                    
+    0000  03 0D 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E   ................          
+  [PASS] variant B: cmd echo = 0x03                                                   
+  [FAIL] variant B: error_code = 0 (success)  (error code 13)                         
+                                                                                      
+  Variant C: uint8  counts, scan_mode=0
+  packet data bytes: ['0x03', '0x01', '0x00', '0x00', '0xE8', '0x03', '0x00', '0x00']
+  response bytes [0:8]: ['0x03', '0x0D', '0x01', '0x02', '0x03', '0x04', '0x05', '0x06']
+    0000  03 0D 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E   ................
+  [PASS] variant C: cmd echo = 0x03
+  [FAIL] variant C: error_code = 0 (success)  (error code 13)
 
-=== Phase 2: setAcquisitionParameters with uint16 exposureTime ===
-  numOfScans=1, numOfBlankScans=0, scanMode=0, exposureTime=1000 (uint16)
-  Pre-check getStatus failed (0x0D) — skipping Phase 2
+  Variant D: uint8  counts, scan_mode=3
+  packet data bytes: ['0x03', '0x01', '0x00', '0x03', '0xE8', '0x03', '0x00', '0x00']
+  response bytes [0:8]: ['0x03', '0x0D', '0x01', '0x02', '0x03', '0x04', '0x05', '0x06']
+    0000  03 0D 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E   ................
+  [PASS] variant D: cmd echo = 0x03
+  [FAIL] variant D: error_code = 0 (success)  (error code 13)
 
-=== Phase 3: Full Acquisition Sequence ===
-  Skipped — Phase 1 ok=False, Phase 2 ok=False
+=== Phase 2: setFrameFormat ===
+  skipped — no working setAcquisitionParameters variant found
 
-=== Phase 4: Feature Report ID Scan (fallback) ===
-  Phase 1 failed.  Scanning feature report IDs 0x01–0x07...        report ID 0x01: send→ -1  read=TIMEOUT
-  report ID 0x02: send→ -1  read=TIMEOUT
-  report ID 0x03: send→ -1  read=TIMEOUT
-  report ID 0x04: send→ -1  read=TIMEOUT
-  report ID 0x05: send→ -1  read=TIMEOUT
-  report ID 0x06: send→ -1  read=TIMEOUT
-  report ID 0x07: send→ -1  read=TIMEOUT
-  [FAIL] at least one feature report ID replies 0x81  (no working feature report ID found)
+=== Phase 3: triggerAcquisition + poll ===
+  skipped — Phases 1/2 did not fully pass
 
-=======================================================
-  Results: 2/4 passed,  2 failed
+============================================================
+  Results: 7/13 passed,  6 failed
 
-  CONCLUSION: 9-byte writes do NOT return 0x81.
-  The output report transport is broken.
-  See Phase 4 feature report scan results above for next steps.  =======================================================
+  No working layout found — inspect hex dumps above.
+============================================================

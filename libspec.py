@@ -54,7 +54,7 @@ class ASQESpectrometer:
         Returns (acq_active: bool, mem_full: bool, frames_in_memory: int).
         Raises RuntimeError on bad reply opcode (error 506) or timeout (505).
         """
-        data = self._write_read(0x01, None, 0x81)
+        data = self._write_read(0x01, None, 0x01)
         status_flags     = data[1]
         frames_in_memory = struct.unpack_from('<H', bytes(data), 2)[0]
         acq_active = bool(status_flags & 0x01)
@@ -67,24 +67,24 @@ class ASQESpectrometer:
         Required when statusFlags bit 1 (mem_full) is set before starting a new
         acquisition.  No-op if memory is already empty.
         """
-        data = self._write_read(0x07, None, 0x87)
+        data = self._write_read(0x07, None, 0x07)
         if data[1] != 0:
             raise RuntimeError(f"clearMemory returned error code {data[1]}")
 
     # ── Transport helpers ──────────────────────────────────────────────────────
 
     def _normalize_response(self, raw):
-        """Normalize platform-specific read length to 64 bytes starting with the reply opcode.
+        """Strip platform-specific report-ID prefix so the buffer starts with the cmd echo.
 
-        Windows/macOS: driver strips the report-ID byte → 64 bytes returned.
-        Linux (hidraw): report-ID byte is kept → 65 bytes returned, byte 0 is 0x00.
-        Valid reply opcodes are 0x81–0x9C, never 0x00, so the check is unambiguous.
+        Linux (hidraw): 65 bytes returned, byte[0] = 0x00 (report ID) → strip to 64 bytes.
+        Windows:        64 bytes returned, byte[0] = 0x0D (report ID) → strip to 63 bytes.
+        Reply opcode (cmd echo) is always byte[0] after stripping.
         """
         if len(raw) == 65 and raw[0] == 0x00:
-            return raw[1:]   # Linux: strip report ID
-        if len(raw) == 64:
-            return raw        # Windows/macOS: already stripped
-        raise RuntimeError(f"Unexpected HID read length {len(raw)}")
+            return raw[1:]   # Linux: strip 0x00 report ID → 64 bytes
+        if len(raw) == 64 and raw[0] == 0x0D:
+            return raw[1:]   # Windows: strip 0x0D report ID → 63 bytes
+        return raw            # fallback
 
     def _write(self, opcode, payload=None):
         pkt = [0x00, opcode] + (payload or [])
@@ -113,7 +113,7 @@ class ASQESpectrometer:
 
     def _get_frame_format(self):
         """Query the device for current pixel count and cache it."""
-        data = self._write_read(0x08, None, 0x88)
+        data = self._write_read(0x08, None, 0x08)
         self._num_pixels_in_frame = struct.unpack_from('<H', bytes(data), 6)[0]
 
     def _get_frame(self, num_frame):
@@ -136,7 +136,7 @@ class ASQESpectrometer:
         buf = np.zeros(3694, dtype=np.uint16)
         for n in range(1, packets_needed + 1):
             data = self._read(timeout_ms=100)
-            if data[0] != 0x8A:
+            if data[0] != 0x0A:
                 raise RuntimeError(
                     f"getFrame: wrong reply 0x{data[0]:02X} (error 506)"
                 )
@@ -168,7 +168,7 @@ class ASQESpectrometer:
 
             for burst_n in range(1, burst_count + 1):
                 data = self._read(timeout_ms=100)
-                if data[0] != 0x9A:
+                if data[0] != 0x1A:
                     raise RuntimeError(
                         f"readFlash: wrong reply 0x{data[0]:02X} (error 505)"
                     )
@@ -249,14 +249,14 @@ class ASQESpectrometer:
         payload += list(struct.pack('<H', self.num_of_blank_scans))
         payload += [self.scan_mode]
         payload += list(struct.pack('<I', self.exposure_time))
-        data = self._write_read(0x03, payload, 0x83)
+        data = self._write_read(0x03, payload, 0x03)
         if data[1] != 0:
             raise RuntimeError(f"setAcquisitionParameters error code {data[1]}")
 
         payload = list(struct.pack('<H', self.num_of_start_element))
         payload += list(struct.pack('<H', self.num_of_end_element))
         payload += [self.reduction_mode]
-        data = self._write_read(0x04, payload, 0x84)
+        data = self._write_read(0x04, payload, 0x04)
         if data[1] != 0:
             raise RuntimeError(f"setFrameFormat error code {data[1]}")
         self._num_pixels_in_frame = struct.unpack_from('<H', bytes(data), 2)[0]
@@ -268,7 +268,7 @@ class ASQESpectrometer:
 
         while True:
             sleep(0.025)
-            data = self._write_read(0x01, None, 0x81)
+            data = self._write_read(0x01, None, 0x01)
             frames_in_memory = struct.unpack_from('<H', bytes(data), 2)[0]
             if frames_in_memory > 0:
                 break

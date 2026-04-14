@@ -263,15 +263,18 @@ class ASQESpectrometer:
 
     # ── Acquisition ────────────────────────────────────────────────────────────
 
-    def capture_frame(self):
+    def capture_frame(self, timeout_s=10):
         self._write(0x06)   # triggerAcquisition — write-only, no reply
 
-        while True:
+        max_polls = int(timeout_s / 0.025)
+        for _ in range(max_polls):
             sleep(0.025)
             data = self._write_read(0x01, None, 0x01)
             frames_in_memory = struct.unpack_from('<H', bytes(data), 2)[0]
             if frames_in_memory > 0:
                 break
+        else:
+            raise RuntimeError(f"capture_frame: no frame ready after {timeout_s} s (error 505)")
 
         if self._num_pixels_in_frame == 0:
             self._get_frame_format()   # lazy init if configure_acquisition() was skipped

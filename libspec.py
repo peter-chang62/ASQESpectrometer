@@ -36,6 +36,41 @@ class ASQESpectrometer:
         self._dev.open(0x20E2, 0x0001)
         self._dev.set_nonblocking(False)
 
+    def reset_device(self):
+        """Send resetDevice (0xF1) — write-only, no reply.
+
+        Reverts all acquisition parameters to factory defaults:
+          numOfScans=1, numOfBlankScans=0, scanMode=0,
+          exposureTime=10 (100 µs), full pixel range, reductionMode=0.
+
+        Caller must sleep ≥1 s before issuing further commands.
+        """
+        self._write(0xF1)
+        self._num_pixels_in_frame = 0   # pixel count unknown after reset
+
+    def get_status(self):
+        """Query device status.
+
+        Returns (acq_active: bool, mem_full: bool, frames_in_memory: int).
+        Raises RuntimeError on bad reply opcode (error 506) or timeout (505).
+        """
+        data = self._write_read(0x01, None, 0x81)
+        status_flags     = data[1]
+        frames_in_memory = struct.unpack_from('<H', bytes(data), 2)[0]
+        acq_active = bool(status_flags & 0x01)
+        mem_full   = bool(status_flags & 0x02)
+        return acq_active, mem_full, frames_in_memory
+
+    def clear_memory(self):
+        """Clear all captured frames from device RAM (opcode 0x07 → 0x87).
+
+        Required when statusFlags bit 1 (mem_full) is set before starting a new
+        acquisition.  No-op if memory is already empty.
+        """
+        data = self._write_read(0x07, None, 0x87)
+        if data[1] != 0:
+            raise RuntimeError(f"clearMemory returned error code {data[1]}")
+
     # ── Transport helpers ──────────────────────────────────────────────────────
 
     def _normalize_response(self, raw):

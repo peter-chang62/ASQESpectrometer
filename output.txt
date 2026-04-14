@@ -1,64 +1,54 @@
-Python 3.8.19 (default, Mar 20 2024, 19:55:45) [MSC v.1916 64 bit (AMD64)]             
-Type 'copyright', 'credits' or 'license' for more information                          
-IPython 8.12.2 -- An enhanced Interactive Python. Type '?' for help.                   
-                                                                                       
-=== Pre-flight ===                                                                     
-  [PASS] hid module is importable                                                      
-  [PASS] Device visible on USB (VID=0x20E2, PID=0x0001)                                
-                                                                                       
-=== Phase 0: Full HID Enumeration (1 interface(s)) ===                                 
-  Multiple interfaces would mean hid.open(vid,pid) may pick the wrong one.             
-                                                                                       
-  Interface [0]:                                                                       
-    path: \\?\HID#VID_20E2&PID_0001#7&3a424fe4&4&0000#{4d1e55b2-f16f-11cf-88cb-00111100...                                                                                    
-    vendor_id: 8418                                                                    
-    product_id: 1                                                                      
-    serial_number: 1.0.0                                                               
-    release_number: 256                                                                
-    manufacturer_string: ASEQ"                                                         
-    product_string: mini-Spectrometers solution                                        
-    usage_page: 65280                                                                  
-    usage: 1                                                                           
-    interface_number: 0                                                                
-    bus_type: 1                                                                        
-                                                                                       
-=== Phase 1: Write Size Probe ===                                                      
-  Sending different write sizes; each should return the number of bytes sent.          
-    write( 9 bytes) → returned 9  [OK]                                                 
-  (flushed 1 stale packet(s))                                                          
-    write(65 bytes) → returned 9  [TRUNCATED — only 9 of 65 bytes sent]                
-  (flushed 1 stale packet(s))                                                          
-  [PASS] hid.device has send_feature_report()
+Python 3.8.19 (default, Mar 20 2024, 19:55:45) [MSC v.1916 64 bit (AMD64)]                                                        
+Type 'copyright', 'credits' or 'license' for more information    
+IPython 8.12.2 -- An enhanced Interactive Python. Type '?' for help.                                                              
+                                                                 
+=== Pre-flight ===                                               
+  [PASS] hid module is importable                                
+  [PASS] Device visible on USB (VID=0x20E2, PID=0x0001)          
+                                                                 
+=== Phase 0: HID Enumeration (1 interface(s)) ===                
+                                                                 
+  Interface [0]:                                                 
+    path: \\?\HID#VID_20E2&PID_0001#7&3a424fe4&4&0000#{4d1e55b2-f16f-11cf-88cb-00111100...                                        
+    vendor_id: 8418                                              
+    product_id: 1                                                
+    serial_number: 1.0.0                                         
+    release_number: 256                                          
+    manufacturer_string: ASEQ"                                   
+    product_string: mini-Spectrometers solution                  
+    usage_page: 65280                                            
+    usage: 1                                                     
+    interface_number: 0                                          
+    bus_type: 1                                                  
+                                                                 
+=== Phase 1: 9-byte getStatus (isolation test) ===               
+  Hypothesis: 8-byte output reports ARE the correct transport.   
+  Packet: [0x00, 0x01, 0x00×7]  →  expect opcode 0x81 in reply.  
+  write9(getStatus) → returned 9  (expect 9)                     
+  read: 64 bytes, opcode=0x0D                                    
+  response bytes [0:8]: ['0xd', '0x1', '0x0', '0x0', '0x0', '0x1', '0x0', '0x0']
+  [FAIL] 9-byte getStatus → opcode 0x81  (got 0x0D)
 
-=== Phase 2: Feature Report Probe ===
-  send_feature_report(65 bytes) → returned -1
-  [FAIL] send_feature_report returned 65  (got -1)
-  read after feature report: TIMEOUT — no response from device
-  [FAIL] feature report getStatus replies 0x81  (read timeout)
+=== Phase 2: setAcquisitionParameters with uint16 exposureTime ===
+  numOfScans=1, numOfBlankScans=0, scanMode=0, exposureTime=1000 (uint16)
+  Pre-check getStatus failed (0x0D) — skipping Phase 2
 
-=== Phase 3: Multi-Interface Path Probe ===
+=== Phase 3: Full Acquisition Sequence ===
+  Skipped — Phase 1 ok=False, Phase 2 ok=False
 
-  Path [0]: \\?\HID#VID_20E2&PID_0001#7&3a424fe4&4&0000#{4d1e55b2-f16f-1...
-    write(65 bytes) → 9
-    read: 64 bytes, opcode 0x0D
-  [FAIL] path[0] write() getStatus → 0x81  (got 0x0D)
-
-=== Transport Resolution ===
-  No working write method found in Phases 2–3.
-  → Try: unplug/replug USB, close all HID clients, re-run this test.
-
-=== Phase 4: Full Command Sequence ===
-  Skipped — no working transport.
+=== Phase 4: Feature Report ID Scan (fallback) ===
+  Phase 1 failed.  Scanning feature report IDs 0x01–0x07...        report ID 0x01: send→ -1  read=TIMEOUT
+  report ID 0x02: send→ -1  read=TIMEOUT
+  report ID 0x03: send→ -1  read=TIMEOUT
+  report ID 0x04: send→ -1  read=TIMEOUT
+  report ID 0x05: send→ -1  read=TIMEOUT
+  report ID 0x06: send→ -1  read=TIMEOUT
+  report ID 0x07: send→ -1  read=TIMEOUT
+  [FAIL] at least one feature report ID replies 0x81  (no working feature report ID found)
 
 =======================================================
-  Results: 3/6 passed,  3 failed
+  Results: 2/4 passed,  2 failed
 
-  Transport diagnosis:
-    feature_report_works = False
-    working_path         = None
-    write_method         = None
-
-  No working write method found.
-  → Unplug/replug USB, close ALL HID clients (LabView, etc.), re-run.
-=======================================================
-
+  CONCLUSION: 9-byte writes do NOT return 0x81.
+  The output report transport is broken.
+  See Phase 4 feature report scan results above for next steps.  =======================================================

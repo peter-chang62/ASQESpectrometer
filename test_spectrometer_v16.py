@@ -120,12 +120,10 @@ dev.open(VID, PID)
 dev.set_nonblocking(False)
 drain(dev)
 
-print()
-sd = read_norm(dev, 0) or []   # non-blocking peek (already drained)
 write65(dev, 0x01)
 sd = read_norm(dev, 500)
 if sd:
-    print(f"  getStatus: framesInMemory={struct.unpack_from('<H', bytes(sd), 2)[0]}  "
+    print(f"\n  getStatus: framesInMemory={struct.unpack_from('<H', bytes(sd), 2)[0]}  "
           f"byte[4]=0x{sd[4]:02X}")
     drain(dev)
 

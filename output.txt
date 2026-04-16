@@ -5,70 +5,42 @@ IPython 8.12.2 -- An enhanced Interactive Python. Type '?' for help.
 === Pre-flight ===
   [PASS] hid importable
   [PASS] device visible (VID=0x20E2 PID=0x0001)
-  [startup] nothing to drain
 
-=== Phase 0: getStatus baseline ===
+=== Baseline: getStatus ===
   [PASS] getStatus cmd echo = 0x01
-  statusFlags=0x00  acq_active=False  mem_full=False  framesInMemory=0  byte[4]=0x01
-    01 00 00 00 01 00 00 0D                           ........
+  statusFlags=0x00  framesInMemory=0  byte[4]=0x01
 
-=== Phase 1: setAcquisitionParameters ===
-  numOfScans=1, numOfBlankScans=0, scanMode=1, exposureTime=3000 (30 ms)
+=== Phase 0: setAcquisitionParameters ===
+  scanMode=0  numOfScans=1  exposureTime=1000 (10 ms)  [NO setFrameFormat]
   [PASS] setAcquisitionParameters cmd echo = 0x03
-  byte[1]=0x0D  (0x0D = expected non-fatal field)
+  byte[1]=0x0D
 
-=== Phase 2: getStatus (post-setAcquisitionParameters) ===
-  statusFlags=0x00  acq_active=False  mem_full=False  framesInMemory=0  byte[4]=0x01
-    01 00 00 00 01 00 01 0D                           ........
-  CHANGED bytes vs baseline: [6]: 0x00→0x01
+=== Phase 1: triggerAcquisition ===
+  sending trigger (0x06)
 
-=== Phase 3: setFrameFormat (write-only) + drain ===
-  sending 0x04: ['0x04', '0x00', '0x00', '0x3F', '0x0E', '0x00']
-  [post-setFrameFormat] drained packet (64 bytes):
-  [post-setFrameFormat]   00 00 AC 58 A0 50 88 50 29 80 9C 2C E0 02 08 00   ...X.P.P)..,....
-  [post-setFrameFormat]   C6 28 30 30 21 30 B8 B4 B1 21 E4 D8 A0 81 81 40   .(00!0...!.....@
-  [post-setFrameFormat]   80 40 18 02 E2 01 21 4C E0 5D 20 82 43 61 22 15   .@....!L.] .Ca".
-  [post-setFrameFormat]   4D 65 40 0F 0A 00 67 02 81 40 12 81 58 B0 81 90   Me@...g..@..X...
+=== Phase 2: wait 200 ms then getFrame(frameIndex=0) directly ===
+  (no framesInMemory check — testing live-buffer hypothesis)
+    packet 1/122: TIMEOUT
+  [FAIL] Phase 2: getFrame(0) succeeded
 
-=== Phase 4: getFrameFormat (0x08) ===
-  [PASS] getFrameFormat cmd echo = 0x08
-  raw bytes[0:12]: ['0x08', '0x0D', '0x01', '0x02', '0x03', '0x04', '0x05', '0x06', '0x07', '0x08', '0x09', '0x0A']
-  num_pixels (bytes[6:8]): 1541
-  alt_pixels  (bytes[2:4]): 513
-    08 0D 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E   ................
+=== Phase 3: watch byte[4] for 0x00→0x01 transition → getFrame(0) ===
+  polling every 10 ms; call getFrame(0) on first 0x00→0x01 transition
+  re-triggered
+  97 ms: byte[4] 0x00→0x01 detected! calling getFrame(0) now
+    packet 1/122: TIMEOUT
+  getFrame(0) failed after transition — continuing poll
+  641 ms: byte[4] 0x00→0x01 detected! calling getFrame(0) now
+    packet 1/122: TIMEOUT
+  [... 8 more transitions, all timeout ...]
+  [FAIL] Phase 3: getFrame(0) on byte[4] transition  (no successful read within 5 s)
 
-=== Phase 5: triggerAcquisition (0x06) ===
-  byte[4] before trigger: 0x01
-  sending triggerAcquisition
-  no response within 50 ms — write-only confirmed
-
-=== Phase 6: poll (5 s) ===
-  poll   1 (  25 ms): statusFlags=0x00  framesInMemory=0  acq_active=False  byte[4]=0x01
-  poll   2 (  50 ms): statusFlags=0x00  framesInMemory=0  acq_active=False  byte[4]=0x00  byte[4]: 0x01→0x00
-  poll   3 (  75 ms): statusFlags=0x00  framesInMemory=0  acq_active=False  byte[4]=0x01  byte[4]: 0x00→0x01
-  poll   7 ( 175 ms): statusFlags=0x00  framesInMemory=0  acq_active=False  byte[4]=0x00  byte[4]: 0x01→0x00
-  poll   8 ( 200 ms): statusFlags=0x00  framesInMemory=0  acq_active=False  byte[4]=0x01  byte[4]: 0x00→0x01
-  poll  11 ( 275 ms): statusFlags=0x00  framesInMemory=0  acq_active=False  byte[4]=0x00  byte[4]: 0x01→0x00
-  poll  12 ( 300 ms): statusFlags=0x00  framesInMemory=0  acq_active=False  byte[4]=0x01  byte[4]: 0x00→0x01
-  [... oscillation continues for 5 s, framesInMemory always 0 ...]
-  framesInMemory never > 0 after 5 s
-  [final] statusFlags=0x00  acq_active=False  mem_full=False  framesInMemory=0  byte[4]=0x01
-    01 00 00 00 01 00 01 0D                           ........
-  [FAIL] frame ready within 5 s
-
-=== Phase 7b: blind getFrame(0xFFFF) probe ===
-  Requesting 1 packet (frameIndex=0xFFFF) despite framesInMemory=0
-  to test whether frames exist but framesInMemory is not updating.
-  TIMEOUT — device returned nothing
-  [FAIL] blind getFrame: any response  (timeout)
-  [post-blind-getFrame] nothing to drain
+=== Phase 4: re-trigger + getFrame(0xFFFF) ===
+  (0xFFFF = 'latest frame' semantics)
+    packet 1/122: TIMEOUT
+  [FAIL] Phase 4: getFrame(0xFFFF) succeeded
 
 ============================================================
-  Results: 5/7 passed,  2 failed
+  Results: 4/7 passed,  3 failed
 
-  No frame captured.
-  Check Phase 7b: if blind getFrame returned 0x0A with pixel data,
-    framesInMemory is misread — investigate status byte layout.
-  If Phase 7b timed out: device is not acquiring. Consider
-    resetDevice (0xF1) + reconnect as next step.
+  No frame data received.
 ============================================================
